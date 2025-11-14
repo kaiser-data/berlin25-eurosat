@@ -7,10 +7,10 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
-from torch.utils.data import DataLoader
+from datasets import load_dataset
+from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import Compose, Normalize, ToTensor
+import numpy as np
 
 warnings.filterwarnings(
     "ignore",
@@ -44,7 +44,7 @@ class Net(nn.Module):
         return self.fc3(x)
 
 
-fds = None  # Cache FederatedDataset
+dataset_cache = None  # Cache dataset
 
 pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
@@ -56,22 +56,46 @@ def apply_transforms(batch):
 
 
 def load_data(partition_id: int, num_partitions: int):
-    """Load partition EuroSAT data."""
-    # Only initialize `FederatedDataset` once
-    global fds
-    if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
-            dataset="tanganke/eurosat",
-            partitioners={"train": partitioner},
-        )
-    partition = fds.load_partition(partition_id)
-    # Divide data on each node: 80% train, 20% test
-    partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
-    # Construct dataloaders
-    partition_train_test = partition_train_test.with_transform(apply_transforms)
-    trainloader = DataLoader(partition_train_test["train"], batch_size=32, shuffle=True)
-    testloader = DataLoader(partition_train_test["test"], batch_size=32)
+    """Load partition EuroSAT data using standard datasets library."""
+    # Only load dataset once
+    global dataset_cache
+    if dataset_cache is None:
+        # Load the full dataset
+        dataset_cache = load_dataset("tanganke/eurosat", split="train")
+
+    # Create IID partitions manually
+    total_samples = len(dataset_cache)
+    samples_per_partition = total_samples // num_partitions
+
+    # Calculate start and end indices for this partition
+    start_idx = partition_id * samples_per_partition
+    if partition_id == num_partitions - 1:
+        # Last partition gets remaining samples
+        end_idx = total_samples
+    else:
+        end_idx = start_idx + samples_per_partition
+
+    # Create indices for this partition
+    partition_indices = list(range(start_idx, end_idx))
+
+    # Split into train/test (80/20)
+    np.random.seed(42)
+    np.random.shuffle(partition_indices)
+    split_point = int(len(partition_indices) * 0.8)
+    train_indices = partition_indices[:split_point]
+    test_indices = partition_indices[split_point:]
+
+    # Create subsets
+    train_dataset = Subset(dataset_cache, train_indices)
+    test_dataset = Subset(dataset_cache, test_indices)
+
+    # Apply transforms and create dataloaders
+    train_dataset_transformed = dataset_cache.select(train_indices).with_transform(apply_transforms)
+    test_dataset_transformed = dataset_cache.select(test_indices).with_transform(apply_transforms)
+
+    trainloader = DataLoader(train_dataset_transformed, batch_size=32, shuffle=True)
+    testloader = DataLoader(test_dataset_transformed, batch_size=32)
+
     return trainloader, testloader
 
 
