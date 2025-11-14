@@ -37,10 +37,11 @@ clientapp = "eurosat.client_app:app"
 
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
-num-server-rounds = 3
-fraction-train = 0.5
-local-epochs = 1
+num-server-rounds = 5
+fraction-train = 1.0
+local-epochs = 2
 lr = 0.001
+batch-size = 64
 
 # Default federation to use when running the app
 [tool.flwr.federations]

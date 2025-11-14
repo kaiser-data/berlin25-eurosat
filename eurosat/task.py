@@ -55,7 +55,7 @@ def apply_transforms(batch):
     return batch
 
 
-def load_data(partition_id: int, num_partitions: int):
+def load_data(partition_id: int, num_partitions: int, batch_size: int = 32):
     """Load partition EuroSAT data using standard datasets library."""
     # Only load dataset once
     global dataset_cache
@@ -93,8 +93,20 @@ def load_data(partition_id: int, num_partitions: int):
     train_dataset_transformed = dataset_cache.select(train_indices).with_transform(apply_transforms)
     test_dataset_transformed = dataset_cache.select(test_indices).with_transform(apply_transforms)
 
-    trainloader = DataLoader(train_dataset_transformed, batch_size=32, shuffle=True)
-    testloader = DataLoader(test_dataset_transformed, batch_size=32)
+    # Use configurable batch size with num_workers for faster data loading
+    trainloader = DataLoader(
+        train_dataset_transformed,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True
+    )
+    testloader = DataLoader(
+        test_dataset_transformed,
+        batch_size=batch_size,
+        num_workers=2,
+        pin_memory=True
+    )
 
     return trainloader, testloader
 

@@ -13,6 +13,9 @@ import json
 from eurosat.task import Net, test, apply_transforms, create_run_dir
 from eurosat.quantization import WeightQuantizer, get_compression_metrics
 
+# Enable PyTorch multi-threading for better CPU utilization
+torch.set_num_threads(6)  # Match cluster vCPU allocation
+
 # Optional WandB support
 try:
     import wandb
@@ -68,6 +71,7 @@ def main(grid: Grid, context: Context) -> None:
     fraction_train: float = context.run_config["fraction-train"]
     num_rounds: int = context.run_config["num-server-rounds"]
     lr: float = context.run_config["lr"]
+    batch_size: int = context.run_config.get("batch-size", 32)
 
     # Load global model
     global_model = Net()
@@ -97,9 +101,9 @@ def main(grid: Grid, context: Context) -> None:
     result = strategy.start(
         grid=grid,
         initial_arrays=arrays,
-        train_config=ConfigRecord({"lr": lr}),
+        train_config=ConfigRecord({"lr": lr, "batch_size": batch_size}),
         num_rounds=num_rounds,
-        evaluate_fn=get_global_evaluate_fn(results_per_round),
+        evaluate_fn=get_global_evaluate_fn(results_per_round, batch_size),
     )
 
     # Save final model to disk
@@ -149,6 +153,7 @@ def main(grid: Grid, context: Context) -> None:
         "num_rounds": num_rounds,
         "fraction_train": fraction_train,
         "local_epochs": context.run_config["local-epochs"],
+        "batch_size": batch_size,
         "learning_rate": lr,
         "training_time_seconds": training_time,
         "final_test_accuracy": final_accuracy,
@@ -167,7 +172,7 @@ def main(grid: Grid, context: Context) -> None:
     print(f"   Final Loss: {final_loss:.4f}")
 
 
-def get_global_evaluate_fn(results_tracker=None):
+def get_global_evaluate_fn(results_tracker=None, batch_size=32):
     """Return an evaluation function for server-side evaluation."""
 
     def global_evaluate(server_round: int, arrays: ArrayRecord) -> MetricRecord:
@@ -181,7 +186,9 @@ def get_global_evaluate_fn(results_tracker=None):
 
         testloader = DataLoader(
             global_test_set.with_transform(apply_transforms),
-            batch_size=32,
+            batch_size=batch_size,
+            num_workers=2,
+            pin_memory=True
         )
         
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

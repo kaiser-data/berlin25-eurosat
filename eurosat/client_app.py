@@ -10,6 +10,9 @@ from eurosat.task import test as test_fn
 from eurosat.task import train as train_fn
 from eurosat.quantization import WeightQuantizer
 
+# Enable PyTorch multi-threading for better CPU utilization
+torch.set_num_threads(6)  # Match cluster vCPU allocation
+
 # Flower ClientApp
 app = ClientApp()
 
@@ -27,10 +30,11 @@ def train(msg: Message, context: Context):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Load the data
+    # Load the data with configurable batch size
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    trainloader, _ = load_data(partition_id, num_partitions)
+    batch_size = context.run_config.get("batch-size", 32)
+    trainloader, _ = load_data(partition_id, num_partitions, batch_size)
 
     # Call the training function
     train_loss = train_fn(
@@ -69,10 +73,11 @@ def evaluate(msg: Message, context: Context):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Load the data
+    # Load the data with configurable batch size
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    _, valloader = load_data(partition_id, num_partitions)
+    batch_size = context.run_config.get("batch-size", 32)
+    _, valloader = load_data(partition_id, num_partitions, batch_size)
 
     # Call the evaluation function
     eval_loss, eval_acc = test_fn(
