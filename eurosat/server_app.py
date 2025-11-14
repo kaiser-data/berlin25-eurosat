@@ -34,8 +34,8 @@ PROJECT_NAME = "Hackathon-Berlin25-Eurosat"
 def main(grid: Grid, context: Context) -> None:
     """Main entry point for the ServerApp."""
 
-    # Get quantization bit-width from environment variable
-    bit_width = int(os.getenv("QUANTIZATION_BITS", "32"))
+    # Get quantization bit-width from config (with environment variable fallback)
+    bit_width = context.run_config.get("quantization-bits", int(os.getenv("QUANTIZATION_BITS", "32")))
 
     # Track start time
     import time
@@ -73,8 +73,8 @@ def main(grid: Grid, context: Context) -> None:
     lr: float = context.run_config["lr"]
     batch_size: int = context.run_config.get("batch-size", 32)
 
-    # Load global model
-    global_model = Net()
+    # Load global model with specified bit-width
+    global_model = Net(bit_width=bit_width)
 
     # Calculate and log compression metrics
     compression_metrics = get_compression_metrics(global_model, bit_width)
@@ -103,7 +103,7 @@ def main(grid: Grid, context: Context) -> None:
         initial_arrays=arrays,
         train_config=ConfigRecord({"lr": lr, "batch_size": batch_size}),
         num_rounds=num_rounds,
-        evaluate_fn=get_global_evaluate_fn(results_per_round, batch_size),
+        evaluate_fn=get_global_evaluate_fn(results_per_round, batch_size, bit_width),
     )
 
     # Save final model to disk
@@ -116,7 +116,7 @@ def main(grid: Grid, context: Context) -> None:
     # Apply quantization and save quantized model
     if bit_width < 32:
         quantizer = WeightQuantizer(bit_width)
-        model_for_quant = Net()
+        model_for_quant = Net(bit_width=bit_width)
         model_for_quant.load_state_dict(state_dict)
 
         quantized_state, quant_params = quantizer.quantize_model(model_for_quant)
@@ -172,7 +172,7 @@ def main(grid: Grid, context: Context) -> None:
     print(f"   Final Loss: {final_loss:.4f}")
 
 
-def get_global_evaluate_fn(results_tracker=None, batch_size=32):
+def get_global_evaluate_fn(results_tracker=None, batch_size=32, bit_width=32):
     """Return an evaluation function for server-side evaluation."""
 
     def global_evaluate(server_round: int, arrays: ArrayRecord) -> MetricRecord:
@@ -193,8 +193,8 @@ def get_global_evaluate_fn(results_tracker=None, batch_size=32):
         
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        # Apply global model parameters
-        net = Net()
+        # Apply global model parameters (get bit_width from outer scope)
+        net = Net(bit_width=bit_width)
         net.load_state_dict(arrays.to_torch_state_dict())
         net.to(device)
         # Evaluate global model on test set

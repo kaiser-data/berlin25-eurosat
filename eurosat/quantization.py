@@ -8,6 +8,104 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class QuantizedLinear(nn.Module):
+    """Linear layer with quantized weights for real low-bit training."""
+
+    def __init__(self, in_features, out_features, bias=True, bit_width=32):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.bit_width = bit_width
+
+        # Store weights in FP32 for gradient updates
+        self.weight_fp32 = nn.Parameter(torch.randn(out_features, in_features))
+        if bias:
+            self.bias_fp32 = nn.Parameter(torch.zeros(out_features))
+        else:
+            self.register_parameter('bias_fp32', None)
+
+    def quantize_weight(self, weight):
+        """Quantize weight tensor on-the-fly."""
+        if self.bit_width == 32:
+            return weight
+
+        abs_max = weight.abs().max()
+        if abs_max == 0:
+            return weight
+
+        if self.bit_width == 1:
+            # Binary weights: -1 or +1
+            scale = abs_max
+            quantized = torch.sign(weight) * scale
+        else:
+            # Multi-bit quantization
+            n_levels = 2 ** self.bit_width
+            qmax = (n_levels // 2) - 1
+            scale = abs_max / qmax
+            quantized = torch.clamp(torch.round(weight / scale), -qmax - 1, qmax) * scale
+
+        return quantized
+
+    def forward(self, x):
+        """Forward pass with quantized weights."""
+        # Quantize weights for forward pass (still differentiable via straight-through estimator)
+        weight_quantized = self.quantize_weight(self.weight_fp32)
+
+        if self.bias_fp32 is not None:
+            return nn.functional.linear(x, weight_quantized, self.bias_fp32)
+        return nn.functional.linear(x, weight_quantized, None)
+
+
+class QuantizedConv2d(nn.Module):
+    """Conv2d layer with quantized weights for real low-bit training."""
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True, bit_width=32):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+        self.stride = stride
+        self.padding = padding
+        self.bit_width = bit_width
+
+        # Store weights in FP32 for gradient updates
+        self.weight_fp32 = nn.Parameter(torch.randn(out_channels, in_channels, *self.kernel_size))
+        if bias:
+            self.bias_fp32 = nn.Parameter(torch.zeros(out_channels))
+        else:
+            self.register_parameter('bias_fp32', None)
+
+    def quantize_weight(self, weight):
+        """Quantize weight tensor on-the-fly."""
+        if self.bit_width == 32:
+            return weight
+
+        abs_max = weight.abs().max()
+        if abs_max == 0:
+            return weight
+
+        if self.bit_width == 1:
+            # Binary weights: -1 or +1
+            scale = abs_max
+            quantized = torch.sign(weight) * scale
+        else:
+            # Multi-bit quantization
+            n_levels = 2 ** self.bit_width
+            qmax = (n_levels // 2) - 1
+            scale = abs_max / qmax
+            quantized = torch.clamp(torch.round(weight / scale), -qmax - 1, qmax) * scale
+
+        return quantized
+
+    def forward(self, x):
+        """Forward pass with quantized weights."""
+        # Quantize weights for forward pass
+        weight_quantized = self.quantize_weight(self.weight_fp32)
+
+        return nn.functional.conv2d(x, weight_quantized, self.bias_fp32,
+                                   self.stride, self.padding)
+
+
 class WeightQuantizer:
     """Quantize model weights to specified bit-widths."""
 

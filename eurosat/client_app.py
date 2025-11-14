@@ -21,11 +21,11 @@ app = ClientApp()
 def train(msg: Message, context: Context):
     """Train the model on local data."""
 
-    # Get quantization bit-width
-    bit_width = int(os.getenv("QUANTIZATION_BITS", "32"))
+    # Get quantization bit-width from config (with environment variable fallback)
+    bit_width = context.run_config.get("quantization-bits", int(os.getenv("QUANTIZATION_BITS", "32")))
 
-    # Load the model and initialize it with the received weights
-    model = Net()
+    # Load the model with quantized layers and initialize with received weights
+    model = Net(bit_width=bit_width)
     model.load_state_dict(msg.content["arrays"].to_torch_state_dict())
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -45,12 +45,8 @@ def train(msg: Message, context: Context):
         device,
     )
 
-    # Apply quantization to model weights after training
-    if bit_width < 32:
-        quantizer = WeightQuantizer(bit_width)
-        quantized_state, quant_params = quantizer.quantize_model(model)
-        dequantized_state = quantizer.dequantize_model(quantized_state, quant_params)
-        model.load_state_dict(dequantized_state)
+    # Model already trained with quantized weights in forward pass
+    # No need for post-training quantization
 
     # Construct and return reply Message
     model_record = ArrayRecord(model.state_dict())
@@ -67,8 +63,11 @@ def train(msg: Message, context: Context):
 def evaluate(msg: Message, context: Context):
     """Evaluate the model on local data."""
 
-    # Load the model and initialize it with the received weights
-    model = Net()
+    # Get quantization bit-width from config (with environment variable fallback)
+    bit_width = context.run_config.get("quantization-bits", int(os.getenv("QUANTIZATION_BITS", "32")))
+
+    # Load the model with quantized layers and initialize with received weights
+    model = Net(bit_width=bit_width)
     model.load_state_dict(msg.content["arrays"].to_torch_state_dict())
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)

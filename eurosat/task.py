@@ -21,18 +21,33 @@ warnings.filterwarnings(
 class Net(nn.Module):
     """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
 
-    def __init__(self):
+    def __init__(self, bit_width=32):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 5)
+        self.bit_width = bit_width
+
+        # Import quantized layers if needed
+        if bit_width < 32:
+            from eurosat.quantization import QuantizedConv2d, QuantizedLinear
+            self.conv1 = QuantizedConv2d(3, 32, 5, bit_width=bit_width)
+            self.conv2 = QuantizedConv2d(32, 64, 5, bit_width=bit_width)
+            self.conv3 = QuantizedConv2d(64, 96, 3, bit_width=bit_width)
+            self.fc1 = QuantizedLinear(96 * 5 * 5, 128, bit_width=bit_width)
+            self.fc2 = QuantizedLinear(128, 128, bit_width=bit_width)
+            self.fc3 = QuantizedLinear(128, 10, bit_width=bit_width)
+        else:
+            # Standard FP32 layers
+            self.conv1 = nn.Conv2d(3, 32, 5)
+            self.conv2 = nn.Conv2d(32, 64, 5)
+            self.conv3 = nn.Conv2d(64, 96, 3)
+            self.fc1 = nn.Linear(96 * 5 * 5, 128)
+            self.fc2 = nn.Linear(128, 128)
+            self.fc3 = nn.Linear(128, 10)
+
+        # BatchNorm and pooling stay in FP32 (standard practice)
         self.bn1 = nn.BatchNorm2d(32)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 64, 5)
         self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 96, 3)
         self.bn3 = nn.BatchNorm2d(96)
-        self.fc1 = nn.Linear(96 * 5 * 5, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, 10)
+        self.pool = nn.MaxPool2d(2, 2)
 
     def forward(self, x):
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
