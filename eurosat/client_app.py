@@ -37,7 +37,7 @@ def train(msg: Message, context: Context):
     trainloader, _ = load_data(partition_id, num_partitions, batch_size)
 
     # Call the training function
-    train_loss = train_fn(
+    train_loss, train_accuracy = train_fn(
         model,
         trainloader,
         context.run_config["local-epochs"],
@@ -52,6 +52,7 @@ def train(msg: Message, context: Context):
     model_record = ArrayRecord(model.state_dict())
     metrics = {
         "train_loss": train_loss,
+        "train_accuracy": train_accuracy,
         "num-examples": len(trainloader.dataset),
     }
     metric_record = MetricRecord(metrics)

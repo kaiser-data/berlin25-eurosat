@@ -91,11 +91,14 @@ def main(grid: Grid, context: Context) -> None:
 
     arrays = ArrayRecord(global_model.state_dict())
 
-    # Initialize FedAvg strategy
-    strategy = FedAvg(fraction_train=fraction_train)
-
-    # Track results per round
+    # Track results per round (shared dictionary for both train and test metrics)
     results_per_round = []
+
+    # Initialize FedAvg strategy with metrics aggregation
+    strategy = FedAvg(
+        fraction_train=fraction_train,
+        fit_metrics_aggregation_fn=get_fit_metrics_aggregation_fn(results_per_round),
+    )
 
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
@@ -172,6 +175,54 @@ def main(grid: Grid, context: Context) -> None:
     print(f"   Final Loss: {final_loss:.4f}")
 
 
+def get_fit_metrics_aggregation_fn(results_tracker=None):
+    """Return metrics aggregation function for training."""
+
+    # Track current round (incremented on each call)
+    round_counter = {"current": 0}
+
+    def fit_metrics_aggregation(results):
+        """Aggregate training metrics from all clients."""
+        round_counter["current"] += 1
+        server_round = round_counter["current"]
+
+        # Weight metrics by number of examples
+        total_examples = sum([r[1]["num-examples"] for r in results])
+
+        aggregated_train_loss = sum([
+            r[1]["train_loss"] * r[1]["num-examples"] for r in results
+        ]) / total_examples
+
+        aggregated_train_accuracy = sum([
+            r[1]["train_accuracy"] * r[1]["num-examples"] for r in results
+        ]) / total_examples
+
+        print(f"Round {server_round} - Train Loss: {aggregated_train_loss:.4f}, Train Accuracy: {aggregated_train_accuracy:.4f}")
+
+        # Store training metrics (will be merged with test metrics later)
+        if results_tracker is not None:
+            # Find or create entry for this round
+            round_entry = None
+            for entry in results_tracker:
+                if entry.get("round") == server_round:
+                    round_entry = entry
+                    break
+
+            if round_entry is None:
+                round_entry = {"round": server_round}
+                results_tracker.append(round_entry)
+
+            round_entry["train_loss"] = float(aggregated_train_loss)
+            round_entry["train_accuracy"] = float(aggregated_train_accuracy)
+
+        return {
+            "train_loss": aggregated_train_loss,
+            "train_accuracy": aggregated_train_accuracy,
+        }
+
+    return fit_metrics_aggregation
+
+
 def get_global_evaluate_fn(results_tracker=None, batch_size=32, bit_width=32):
     """Return an evaluation function for server-side evaluation."""
 
@@ -212,16 +263,25 @@ def get_global_evaluate_fn(results_tracker=None, batch_size=32, bit_width=32):
             except:
                 pass  # Silently skip if WandB not initialized
 
-        # Track results
+        # Track results - merge with training metrics if they exist
         if results_tracker is not None:
-            results_tracker.append({
-                "round": server_round,
-                "test_loss": float(loss),
-                "test_accuracy": float(accuracy)
-            })
+            # Find existing entry for this round (created by fit_metrics_aggregation)
+            round_entry = None
+            for entry in results_tracker:
+                if entry.get("round") == server_round:
+                    round_entry = entry
+                    break
+
+            if round_entry is None:
+                round_entry = {"round": server_round}
+                results_tracker.append(round_entry)
+
+            # Add test metrics
+            round_entry["test_loss"] = float(loss)
+            round_entry["test_accuracy"] = float(accuracy)
 
         # Always print metrics
-        print(f"Round {server_round} - Test Loss: {loss:.4f}, Test Accuracy: {accuracy:.4f}")
+        print(f"             Test Loss: {loss:.4f}, Test Accuracy: {accuracy:.4f}")
 
         return MetricRecord({"accuracy": accuracy, "loss": loss})
 

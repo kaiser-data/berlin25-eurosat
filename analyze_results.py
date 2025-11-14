@@ -69,19 +69,19 @@ def calculate_accuracy_drop(results):
 
 def print_comparison_table(results):
     """Print comprehensive comparison table."""
-    print("\n" + "="*120)
+    print("\n" + "="*140)
     print("📊 Quantization Experiment Results - Comprehensive Analysis")
-    print("="*120)
+    print("="*140)
     print()
 
     # Header
     header = (
         f"{'Bit-Width':>10} | {'Size (MB)':>10} | {'Compression':>12} | "
-        f"{'Reduction':>10} | {'Accuracy':>10} | {'Loss':>8} | "
+        f"{'Reduction':>10} | {'Test Acc':>10} | {'Train Acc':>10} | {'Overfit':>8} | "
         f"{'Δ Acc':>8} | {'Time (s)':>9} | {'Output Dir':>20}"
     )
     print(header)
-    print("-" * 120)
+    print("-" * 140)
 
     # Rows
     for r in results:
@@ -90,20 +90,30 @@ def print_comparison_table(results):
         size_mb = comp_metrics.get("compressed_size_mb", 0)
         compression = comp_metrics.get("compression_ratio", 1.0)
         reduction = comp_metrics.get("size_reduction_percent", 0)
-        accuracy = r.get("final_test_accuracy", 0) * 100  # Convert to percentage
-        loss = r.get("final_test_loss", 0)
+
+        test_accuracy = r.get("final_test_accuracy", 0) * 100  # Convert to percentage
+
+        # Get final training accuracy (from last round)
+        train_accuracy = 0.0
+        results_per_round = r.get("results_per_round", [])
+        if results_per_round and "train_accuracy" in results_per_round[-1]:
+            train_accuracy = results_per_round[-1]["train_accuracy"] * 100
+
+        # Calculate overfitting gap (positive means overfitting)
+        overfit_gap = train_accuracy - test_accuracy
+
         acc_drop = r.get("accuracy_drop_percent", 0)
         time_s = r.get("training_time_seconds", 0)
         output_dir = Path(r.get("output_dir", "")).name
 
         row = (
             f"{bit_width:>10} | {size_mb:>10.2f} | {compression:>11.2f}x | "
-            f"{reduction:>9.1f}% | {accuracy:>9.2f}% | {loss:>8.4f} | "
-            f"{acc_drop:>+7.2f}% | {time_s:>9.1f} | {output_dir:>20}"
+            f"{reduction:>9.1f}% | {test_accuracy:>9.2f}% | {train_accuracy:>9.2f}% | "
+            f"{overfit_gap:>+7.2f}% | {acc_drop:>+7.2f}% | {time_s:>9.1f} | {output_dir:>20}"
         )
         print(row)
 
-    print("="*120)
+    print("="*140)
     print()
 
 
@@ -176,11 +186,27 @@ def print_summary_stats(results):
     # Best accuracy
     best_acc = max(results, key=lambda x: x.get("final_test_accuracy", 0))
     best_acc_val = best_acc.get("final_test_accuracy", 0) * 100
-    print(f"🎯 Best accuracy: {best_acc.get('bit_width')}-bit ({best_acc_val:.2f}%)")
+    print(f"🎯 Best test accuracy: {best_acc.get('bit_width')}-bit ({best_acc_val:.2f}%)")
 
     # Average compression
     avg_comp = sum(r.get("compression_metrics", {}).get("compression_ratio", 0) for r in results) / len(results)
     print(f"📊 Average compression: {avg_comp:.2f}x")
+
+    # Overfitting analysis
+    overfit_results = []
+    for r in results:
+        results_per_round = r.get("results_per_round", [])
+        if results_per_round and "train_accuracy" in results_per_round[-1]:
+            train_acc = results_per_round[-1]["train_accuracy"] * 100
+            test_acc = r.get("final_test_accuracy", 0) * 100
+            overfit_gap = train_acc - test_acc
+            overfit_results.append((r.get("bit_width"), overfit_gap))
+
+    if overfit_results:
+        avg_overfit = sum(gap for _, gap in overfit_results) / len(overfit_results)
+        max_overfit_bit, max_overfit_gap = max(overfit_results, key=lambda x: x[1])
+        print(f"🔍 Average overfitting: {avg_overfit:.2f}% (train - test)")
+        print(f"⚠️  Most overfitting: {max_overfit_bit}-bit ({max_overfit_gap:+.2f}%)")
 
     # Find sweet spot (best accuracy/compression trade-off)
     for r in results:

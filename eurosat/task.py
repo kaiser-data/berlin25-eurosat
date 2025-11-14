@@ -133,17 +133,28 @@ def train(net, trainloader, epochs, lr, device):
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     net.train()
     running_loss = 0.0
+    correct = 0
+    total = 0
+
     for _ in range(epochs):
         for batch in trainloader:
             images = batch["image"].to(device)
             labels = batch["label"].to(device)
             optimizer.zero_grad()
-            loss = criterion(net(images), labels)
+            outputs = net(images)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-    avg_trainloss = running_loss / len(trainloader)
-    return avg_trainloss
+
+            # Track training accuracy
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    avg_trainloss = running_loss / (len(trainloader) * epochs)
+    train_accuracy = correct / total
+    return avg_trainloss, train_accuracy
 
 
 def test(net, testloader, device):
