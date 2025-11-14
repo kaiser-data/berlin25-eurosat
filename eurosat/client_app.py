@@ -1,5 +1,6 @@
 """eurosat: A Flower / PyTorch app."""
 
+import os
 import torch
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
@@ -7,6 +8,7 @@ from flwr.clientapp import ClientApp
 from eurosat.task import Net, load_data
 from eurosat.task import test as test_fn
 from eurosat.task import train as train_fn
+from eurosat.quantization import WeightQuantizer
 
 # Flower ClientApp
 app = ClientApp()
@@ -15,6 +17,9 @@ app = ClientApp()
 @app.train()
 def train(msg: Message, context: Context):
     """Train the model on local data."""
+
+    # Get quantization bit-width
+    bit_width = int(os.getenv("QUANTIZATION_BITS", "32"))
 
     # Load the model and initialize it with the received weights
     model = Net()
@@ -35,6 +40,13 @@ def train(msg: Message, context: Context):
         msg.content["config"]["lr"],
         device,
     )
+
+    # Apply quantization to model weights after training
+    if bit_width < 32:
+        quantizer = WeightQuantizer(bit_width)
+        quantized_state, quant_params = quantizer.quantize_model(model)
+        dequantized_state = quantizer.dequantize_model(quantized_state, quant_params)
+        model.load_state_dict(dequantized_state)
 
     # Construct and return reply Message
     model_record = ArrayRecord(model.state_dict())
