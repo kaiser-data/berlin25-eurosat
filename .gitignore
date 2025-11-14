@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+hackathon-venv/
+hackathon-venv-cpu/
+hackathon-venv-gpu/
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# Outputs and Logs
+outputs/
+logs/
+runs/
+checkpoints/
+saved_models/
+*.log
+
+# WandB
+wandb/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Rope project settings (you have this already)
+.ropeproject/
+
+# Data and Cache
+data/
+*.csv
+*.h5
+*.hdf5
+datasets/
+.cache/
+
+# HuggingFace Cache
+.cache/huggingface/
+
+# Environment Variables
+.env
+.env.local
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Slurm
+slurm-*.out
+*.slurm
