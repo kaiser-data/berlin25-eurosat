@@ -137,13 +137,20 @@ def test(net, testloader, device):
     return loss, accuracy
 
 
-def create_run_dir() -> tuple[Path, str]:
-    """Create a directory where to save results from this run."""
-    # Create output directory given current timestamp
-    current_time = datetime.now()
-    run_dir = current_time.strftime("%Y-%m-%d/%H-%M-%S")
-    # Save path is based on the current directory
-    save_path = Path.cwd() / f"outputs/{run_dir}"
-    save_path.mkdir(parents=True, exist_ok=False)
+def create_run_dir(bit_width: int = 32) -> tuple[Path, str]:
+    """Create a directory where to save results from this run, organized by bit-width."""
+    import os
 
-    return run_dir, str(save_path)
+    # Get bit-width from environment if not provided
+    if bit_width == 32:
+        bit_width = int(os.getenv("QUANTIZATION_BITS", "32"))
+
+    # Create output directory organized by bit-width
+    current_time = datetime.now()
+    timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+    # New structure: outputs/{bit_width}bit/run_{timestamp}/
+    save_path = Path.cwd() / f"outputs/{bit_width}bit/run_{timestamp}"
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    return save_path, str(save_path)

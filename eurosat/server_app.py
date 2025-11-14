@@ -34,8 +34,12 @@ def main(grid: Grid, context: Context) -> None:
     # Get quantization bit-width from environment variable
     bit_width = int(os.getenv("QUANTIZATION_BITS", "32"))
 
-    # Create run directory
-    run_dir, save_path = create_run_dir()
+    # Track start time
+    import time
+    start_time = time.time()
+
+    # Create run directory organized by bit-width
+    run_dir, save_path = create_run_dir(bit_width)
 
     # Initialize Weights & Biases logging (optional)
     run_name = f"{str(run_dir)}-{bit_width}bit"
@@ -86,13 +90,16 @@ def main(grid: Grid, context: Context) -> None:
     # Initialize FedAvg strategy
     strategy = FedAvg(fraction_train=fraction_train)
 
+    # Track results per round
+    results_per_round = []
+
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
         grid=grid,
         initial_arrays=arrays,
         train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
-        evaluate_fn=get_global_evaluate_fn(),
+        evaluate_fn=get_global_evaluate_fn(results_per_round),
     )
 
     # Save final model to disk
@@ -129,8 +136,38 @@ def main(grid: Grid, context: Context) -> None:
         print(f"   {bit_width}-bit model: {quant_size:.2f} MB")
         print(f"   Actual compression: {fp32_size/quant_size:.2f}x")
 
+    # Calculate training time
+    training_time = time.time() - start_time
 
-def get_global_evaluate_fn():
+    # Get final results
+    final_accuracy = results_per_round[-1]["test_accuracy"] if results_per_round else 0.0
+    final_loss = results_per_round[-1]["test_loss"] if results_per_round else 0.0
+
+    # Save complete training results
+    training_results = {
+        "bit_width": bit_width,
+        "num_rounds": num_rounds,
+        "fraction_train": fraction_train,
+        "local_epochs": context.run_config["local-epochs"],
+        "learning_rate": lr,
+        "training_time_seconds": training_time,
+        "final_test_accuracy": final_accuracy,
+        "final_test_loss": final_loss,
+        "results_per_round": results_per_round,
+        "compression_metrics": compression_metrics,
+        "timestamp": run_dir.name
+    }
+
+    with open(f"{save_path}/training_results.json", "w") as f:
+        json.dump(training_results, f, indent=2)
+
+    print(f"\n✅ Training complete!")
+    print(f"   Time: {training_time:.1f} seconds")
+    print(f"   Final Accuracy: {final_accuracy*100:.2f}%")
+    print(f"   Final Loss: {final_loss:.4f}")
+
+
+def get_global_evaluate_fn(results_tracker=None):
     """Return an evaluation function for server-side evaluation."""
 
     def global_evaluate(server_round: int, arrays: ArrayRecord) -> MetricRecord:
@@ -167,6 +204,14 @@ def get_global_evaluate_fn():
                 )
             except:
                 pass  # Silently skip if WandB not initialized
+
+        # Track results
+        if results_tracker is not None:
+            results_tracker.append({
+                "round": server_round,
+                "test_loss": float(loss),
+                "test_accuracy": float(accuracy)
+            })
 
         # Always print metrics
         print(f"Round {server_round} - Test Loss: {loss:.4f}, Test Accuracy: {accuracy:.4f}")
