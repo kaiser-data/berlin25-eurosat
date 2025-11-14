@@ -39,12 +39,21 @@ def main(grid: Grid, context: Context) -> None:
 
     # Initialize Weights & Biases logging (optional)
     run_name = f"{str(run_dir)}-{bit_width}bit"
-    if WANDB_AVAILABLE:
-        wandb.init(
-            project=PROJECT_NAME,
-            name=run_name,
-            config={"bit_width": bit_width}
-        )
+    wandb_enabled = False
+    if WANDB_AVAILABLE and os.getenv("WANDB_API_KEY"):
+        try:
+            wandb.init(
+                project=PROJECT_NAME,
+                name=run_name,
+                config={"bit_width": bit_width}
+            )
+            wandb_enabled = True
+            print("✅ WandB logging enabled")
+        except Exception as e:
+            print(f"⚠️  WandB initialization failed: {e}")
+            print("Continuing without WandB logging...")
+    else:
+        print("ℹ️  WandB not configured - using local logging only")
 
     print(f"\n{'='*70}")
     print(f"🔢 Quantization Training: {bit_width}-bit weights")
@@ -147,14 +156,17 @@ def get_global_evaluate_fn():
         # Evaluate global model on test set
         loss, accuracy = test(net, testloader, device=device)
 
-        # Log to WandB if available
-        if WANDB_AVAILABLE:
-            wandb.log(
-                {
-                    "Global Test Loss": loss,
-                    "Global Test Accuracy": accuracy,
-                }
-            )
+        # Log to WandB if available and configured
+        if WANDB_AVAILABLE and os.getenv("WANDB_API_KEY"):
+            try:
+                wandb.log(
+                    {
+                        "Global Test Loss": loss,
+                        "Global Test Accuracy": accuracy,
+                    }
+                )
+            except:
+                pass  # Silently skip if WandB not initialized
 
         # Always print metrics
         print(f"Round {server_round} - Test Loss: {loss:.4f}, Test Accuracy: {accuracy:.4f}")
