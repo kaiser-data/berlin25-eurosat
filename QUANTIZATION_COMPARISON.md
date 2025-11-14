@@ -1,6 +1,6 @@
-# Quantization Experiments - Two Approaches
+# Quantization Experiments - Three Approaches
 
-This project includes **two different quantization experiments** with different goals:
+This project includes **three different quantization experiments** with different goals:
 
 ---
 
@@ -56,7 +56,46 @@ python real_quantization_comparison.py
 
 ---
 
-## 📚 Approach 2: Quantization-Aware Training (QAT)
+## ⚔️ Approach 2: QAT vs PTQ Head-to-Head (NEW!)
+
+**File**: `compare_qat_vs_ptq.py`
+**Goal**: Answer "Which is better for 8-bit: train with 8-bit or quantize after?"
+
+### The Experiment:
+This directly compares:
+- **QAT**: Train with 8-bit quantization from the start
+- **PTQ**: Train in 32-bit, then quantize to INT8
+
+### How to Run:
+```bash
+./submit_qat_vs_ptq.sh
+```
+
+### What You'll Learn:
+```
+📊 COMPARISON: QAT vs PTQ for 8-bit Models
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 Final Test Accuracy:
+   QAT (8-bit training):  82.45%
+   PTQ (32→8 bit):        84.23%
+   Difference: +1.78%
+
+🏆 Winner: PTQ
+   → Training in FP32 then quantizing is better!
+
+⏱️  Training Time:
+   Both take ~5 minutes (same training epochs)
+```
+
+### Why This Matters:
+- Shows if quantization-aware training helps
+- Determines best workflow for 8-bit models
+- Reveals accuracy vs training approach trade-offs
+
+---
+
+## 📚 Approach 3: Quantization-Aware Training (QAT)
 
 **Files**: `submit_quantization_jobs.sh`, federated learning pipeline
 **Goal**: Study how **training with quantization noise** affects model accuracy
@@ -102,39 +141,56 @@ loss.backward()  # Updates weight_fp32
 ## 🤔 Which Should You Use?
 
 ### Use **Approach 1 (Real INT8)** if you want:
-- ✅ Actual deployment benefits
-- ✅ Real speedup measurements
+- ✅ Actual deployment benefits (compression + speedup)
+- ✅ Real INT8 operations and measurements
 - ✅ Production-ready quantization
-- ✅ Quick comparison (1 training run)
+- ✅ Quick results (1 training run)
 
-### Use **Approach 2 (QAT)** if you want:
+### Use **Approach 2 (QAT vs PTQ)** if you want:
+- ✅ Direct answer: "Train with 8-bit or quantize after?"
+- ✅ Compare two 8-bit workflows head-to-head
+- ✅ Understand which approach preserves accuracy better
+- ✅ Moderate time (2 training runs, ~10 min)
+
+### Use **Approach 3 (Multi-bit QAT)** if you want:
 - ✅ Scientific study of quantization effects
 - ✅ Compare many bit-widths (1, 2, 4, 8, 16, 32)
 - ✅ Understand overfitting at different precisions
-- ✅ Train models robust to quantization
+- ✅ Comprehensive analysis (6 runs, ~15 min)
 
 ---
 
 ## 📊 Recommended Workflow
 
-### For Hackathon / Quick Results:
+### For Hackathon / Best Story:
 ```bash
-# 1. Run real comparison (fast, ~5 minutes)
+# Run the QAT vs PTQ comparison (most interesting!)
+./submit_qat_vs_ptq.sh
+
+# Wait ~10 minutes, then check results
+cat outputs/qat_vs_ptq_comparison/comparison_results.json
+```
+
+**Why this is best:**
+- Answers a clear question: "Which training approach is better?"
+- Shows practical comparison everyone understands
+- Reveals if quantization-aware training helps
+
+### For Production Deployment:
+```bash
+# Run real INT8 comparison (shows actual benefits)
 ./submit_real_comparison.sh
 
-# 2. Wait for completion
-squeue -u team11
-
-# 3. Check results
+# Check real speedup and compression
 cat outputs/real_quantization_comparison/comparison_results.json
 ```
 
 ### For Research / Deep Analysis:
 ```bash
-# 1. Run all bit-widths (slower, ~6-8 minutes)
+# Run all bit-widths (comprehensive study)
 ./submit_quantization_jobs.sh
 
-# 2. Analyze when complete
+# Analyze when complete
 python analyze_results.py
 ```
 
